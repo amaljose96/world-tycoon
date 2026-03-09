@@ -11,7 +11,7 @@ interface IFactorySceneProps {
 export function FactoryScene({ gameBoard }: IFactorySceneProps) {
   const [, setTick] = useState(0);
   useTick((tick) => {
-    gameBoard.update(tick.deltaTime);
+    gameBoard.update(tick.deltaMS);
     setTick((t) => t + 1);
   });
   return (

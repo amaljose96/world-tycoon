@@ -3,6 +3,7 @@ import {
   BOARD_WIDTH,
   FACTORY_MARGIN,
   FACTORY_SIZE,
+  ITEM_RENDER_SIZE,
   SCREEN_MARGIN,
 } from "../constants";
 import { Belt } from "../Belt";
@@ -10,6 +11,7 @@ import { Spawner } from "../Spawner";
 import { Item } from "../Item";
 import type { GameData, SpawnerData } from "../../types";
 import type { Path } from "../Path";
+import type { TilingSprite } from "pixi.js";
 
 export class GameBoard {
   gameData: GameData;
@@ -40,7 +42,8 @@ export class GameBoard {
     const firstSnakeHeight =
       BELT_WIDTH + FACTORY_SIZE * 2.5 + FACTORY_MARGIN * 4;
 
-    const outputHeight = FACTORY_SIZE * 2 + FACTORY_MARGIN * 4 + SCREEN_MARGIN;
+    const outputHeight =
+      FACTORY_SIZE * 2 + FACTORY_MARGIN * 4 + SCREEN_MARGIN * 2;
 
     this.gameBoardHeight = spawnerHeight + firstSnakeHeight + outputHeight;
     console.log("Calculated game board height: ", this.gameBoardHeight);
@@ -57,68 +60,56 @@ export class GameBoard {
       leftSpawnerData: SpawnerData;
       rightSpawnerData?: SpawnerData;
     }[] = [];
-    console.log("Game data spawners: ", this.gameData.spawners);
 
-    if (this.gameData.spawners.length === 1) {
+    for (let i = 0; i < this.gameData.spawners.length; i += 2) {
       spawnerRows.push({
-        leftSpawnerData: this.gameData.spawners[0],
+        leftSpawnerData: this.gameData.spawners[i],
+        // Only add right if it exists (handles odd numbers automatically)
+        rightSpawnerData: this.gameData.spawners[i + 1] || undefined,
       });
     }
-
-    this.gameData.spawners.forEach((spawnerData, spawnerIndex) => {
-      if (spawnerIndex % 2 === 1) {
-        spawnerRows.push({
-          leftSpawnerData: this.gameData.spawners[spawnerIndex - 1],
-          rightSpawnerData: spawnerData,
-        });
-      }
-    });
     let previousRowMasterBelt: Belt | undefined = undefined;
 
-    console.log(
-      "Constructing spawners and their belts with the following data: ",
-      {
-        spawnerRows,
-      },
-    );
     spawnerRows.forEach((row, rowIndex) => {
       const leftSpawner = new Spawner({
-        id: `spawner-${row.leftSpawnerData.type}-row-${rowIndex}-left`,
         y: spawnerY,
         position: "left",
-        itemType: row.leftSpawnerData.type,
-        beltSpeed: this.gameData.beltSpeed,
-        spawnSpeed: row.leftSpawnerData.speed,
+        type: row.leftSpawnerData.type,
+        gameData: this.gameData,
       });
+
       const rightSpawner = row.rightSpawnerData
         ? new Spawner({
-            id: `spawner-${row.rightSpawnerData.type}-row-${rowIndex}-right`,
             y: spawnerY,
             position: "right",
-            itemType: row.rightSpawnerData.type,
-            beltSpeed: this.gameData.beltSpeed,
-            spawnSpeed: row.rightSpawnerData.speed,
+            type: row.rightSpawnerData.type,
+            gameData: this.gameData,
           })
         : undefined;
+
       spawnerY -= FACTORY_SIZE + FACTORY_MARGIN;
+
+      leftSpawner.setSpawnerLevel(row.leftSpawnerData.level);
       this.spawners.push(leftSpawner);
-      if (rightSpawner) {
+
+      if (row.rightSpawnerData && rightSpawner) {
+        rightSpawner.setSpawnerLevel(row.rightSpawnerData?.level);
         this.spawners.push(rightSpawner);
       }
-      console.log("Constructed spawner: ", leftSpawner, rightSpawner);
 
-      const rowMasterBelt = new Belt(
-        `master-spawner-belt-row-${rowIndex}`,
-        {
+      const rowMasterBelt = new Belt({
+        id: `master-spawner-belt-row-${rowIndex}`,
+
+        start: {
           x: BOARD_WIDTH / 2,
           y: leftSpawner.spawnerOutputBelt.start.y,
         },
-        {
+        end: {
           x: BOARD_WIDTH / 2,
           y: spawnerY,
         },
-        this.gameData.beltSpeed,
-      );
+        gameData: this.gameData,
+      });
       leftSpawner.spawnerOutputBelt.nextPath = rowMasterBelt;
       spawnerBelts.push(leftSpawner.spawnerOutputBelt);
       if (rightSpawner) {
@@ -150,12 +141,12 @@ export class GameBoard {
       .slice(0, -1)
       .map((start, i) => {
         const end = waypointsToFirstSnake[i + 1];
-        const belt = new Belt(
-          `belt-to-first-snake-${i}`,
+        const belt = new Belt({
+          id: `belt-to-first-snake-${i}`,
           start,
           end,
-          this.gameData.beltSpeed,
-        );
+          gameData: this.gameData,
+        });
         return belt;
       });
     beltsToFirstSnake.slice(0, -1).forEach((belt, beltIndex) => {
@@ -168,27 +159,27 @@ export class GameBoard {
 
   constructOutputBelts(lastBelt: Belt): Belt[] {
     const outputBelts = [
-      new Belt(
-        "output-belt-0",
-        lastBelt.end,
-        {
+      new Belt({
+        id: "output-belt-0",
+        start: lastBelt.end,
+        end: {
           x: BOARD_WIDTH / 2,
           y: lastBelt.end.y,
         },
-        this.gameData.beltSpeed,
-      ),
-      new Belt(
-        "output-belt-1",
-        {
+        gameData: this.gameData,
+      }),
+      new Belt({
+        id: "output-belt-1",
+        start: {
           x: BOARD_WIDTH / 2,
           y: lastBelt.end.y,
         },
-        {
+        end: {
           x: BOARD_WIDTH / 2,
           y: lastBelt.end.y - FACTORY_SIZE * 2 - FACTORY_MARGIN * 4,
         },
-        this.gameData.beltSpeed,
-      ),
+        gameData: this.gameData,
+      }),
     ];
     lastBelt.nextPath = outputBelts[0];
     outputBelts[0].nextPath = outputBelts[1];
@@ -214,7 +205,7 @@ export class GameBoard {
     this.belts = [...spawnerBelts, ...beltsToFirstSnake, ...outputBelts];
   }
 
-  update(frameTime: number) {
+  update(frameTimeMS: number) {
     // 1. Group items by path (O(n))
     const itemsByPath = new Map<Path, Item[]>();
     this.items.forEach((item) => {
@@ -236,7 +227,7 @@ export class GameBoard {
       items.forEach((item, index) => {
         // The "Leader" is items[0], it has no one in front ON THIS PATH
         const itemInFront = index > 0 ? items[index - 1] : undefined;
-        item.update(frameTime, itemInFront, nextPathTail);
+        item.update(frameTimeMS, itemInFront, nextPathTail);
       });
     });
     this.items = this.items.filter((item) => !item.shouldBeRemoved);
@@ -246,10 +237,18 @@ export class GameBoard {
         nextPathItems && nextPathItems.length > 1
           ? nextPathItems[nextPathItems.length - 1]
           : undefined;
-      const generatedItem = spawner.generateItem(frameTime, nextPathTail);
+      const generatedItem = spawner.generateItem(frameTimeMS, nextPathTail);
       if (generatedItem) {
         console.log("Generated new item: ", generatedItem.id);
         this.items = [...this.items, generatedItem];
+      }
+    });
+    const totalSeconds = performance.now() / ITEM_RENDER_SIZE;
+    const globalOffset = this.gameData.beltSpeed * totalSeconds;
+    this.belts.forEach((belt) => {
+      if (belt.view.children.length > 0) {
+        const sprite = belt.view.getChildAt(0) as TilingSprite;
+        sprite.tilePosition.x = globalOffset;
       }
     });
   }

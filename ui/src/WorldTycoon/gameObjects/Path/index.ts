@@ -1,4 +1,4 @@
-import { DEBUG_MODE } from "../constants";
+import { DEBUG_MODE, ITEM_RENDER_SIZE } from "../constants";
 
 import type { Point, Vector } from "../types";
 import { Graphics, Container } from "pixi.js";
@@ -16,13 +16,19 @@ export class Path {
 
   nextPath: Path | undefined;
 
-  constructor(
-    id: string,
-    start: Point,
-    end: Point,
-    speed: number,
-    width: number = 20,
-  ) {
+  constructor({
+    id,
+    start,
+    end,
+    speed,
+    width,
+  }: {
+    id: string;
+    start: Point;
+    end: Point;
+    speed: number;
+    width: number;
+  }) {
     this.id = id;
     this.start = start;
     this.end = end;
@@ -93,9 +99,9 @@ export class Path {
   getUpdatedItemPosition(
     currentItemPosition: Point,
     currentItemPathProgress: number,
-    frameTime: number,
+    frameTimeMS: number,
   ): { nextPosition: Point; nextPathProgress: number } {
-    const distanceToMove = this.speed * frameTime;
+    const distanceToMove = (this.speed * frameTimeMS * ITEM_RENDER_SIZE) / 1000;
     if (distanceToMove === 0) {
       return {
         nextPosition: currentItemPosition,

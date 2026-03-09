@@ -4,13 +4,26 @@ export const gameData: GameData = {
   beltSpeed: 3,
   spawners: [
     {
-      type: "iron-ore",
-      speed: 12,
+      type: "leek-farm",
+      level: 2,
     },
     {
-      type: "coal",
-      speed: 9,
+      type: "leek-farm",
+      level: 1,
+    },
+    {
+      type: "leek-farm",
+      level: 1,
+    },
+    {
+      type: "leek-farm",
+      level: 1,
     },
   ],
   factories: [],
+  itemLevels: {
+    leek: 2,
+    soup: 1,
+    cake: 1,
+  },
 };

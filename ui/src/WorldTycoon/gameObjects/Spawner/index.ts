@@ -1,4 +1,4 @@
-import { Graphics } from "pixi.js";
+import { Assets, Graphics, Sprite } from "pixi.js";
 import {
   BELT_WIDTH,
   BOARD_WIDTH,
@@ -9,27 +9,31 @@ import {
 import { Path } from "../Path";
 import { Item } from "../Item";
 import { Belt } from "../Belt";
+import { getQuantityByLevel } from "../../utils/getQuantityByLevel";
+import type { GameData } from "../../types";
+import { spawnerTypes } from "../../gameInfo";
 
 export class Spawner extends Path {
-  spawnTimer: number = 0; // Timer to track when to spawn the next item
-  spawnInterval: number; // Time interval (in ms) between spawns
-  itemType: string = "unknown"; // Type of item to spawn, can be extended for different item types
+  type: string;
+
+  spawnerLevel: number = 1;
+  spawnTimer: number = 0;
+  spawnInterval: number;
+  itemType: string = "unknown";
+  itemLevel: number = 1;
   spawnerOutputBelt: Belt;
+  position: "left" | "right";
 
   constructor({
-    id,
+    type,
     y,
     position,
-    itemType,
-    beltSpeed,
-    spawnSpeed,
+    gameData,
   }: {
-    id: string;
+    type: string;
     y: number;
     position: "left" | "right";
-    itemType: string;
-    beltSpeed: number;
-    spawnSpeed: number;
+    gameData: GameData;
   }) {
     const spawnerPosition = {
       x:
@@ -52,72 +56,137 @@ export class Spawner extends Path {
       x: BOARD_WIDTH / 2,
       y,
     };
+    const spawnerId = Math.floor(Math.random() * 1000);
+    const id = `spawner-${type}-${position}-${spawnerId}`;
 
-    super(id, spawnerPosition, beltStartPosition, 0.1, SPAWNER_SIZE);
-    this.spawnerOutputBelt = new Belt(
-      `belt-${id}-output`,
-      beltStartPosition,
-      beltEndPosition,
-      beltSpeed,
+    super({
+      id,
+      start: spawnerPosition,
+      end: beltStartPosition,
+      speed: 0.1,
+      width: SPAWNER_SIZE,
+    });
+    this.position = position;
+    this.type = type;
+
+    this.view.removeChildren();
+    this.render();
+    this.spawnerOutputBelt = new Belt({
+      id: `belt-${id}-output`,
+      start: beltStartPosition,
+      end: beltEndPosition,
+      gameData,
+    });
+    const spawnerInfo = spawnerTypes.find(
+      (spawnerType) => spawnerType.id === type,
     );
-    this.itemType = itemType;
+    if (!spawnerInfo) {
+      throw new Error(
+        "Cannot initialize unknown spawner " +
+          type +
+          ". Make sure Spawner types includes this",
+      );
+    }
+    this.itemType = spawnerInfo?.spawns;
+    this.itemLevel = gameData.itemLevels[this.itemType];
 
-    this.speed = beltSpeed;
+    this.speed = gameData.beltSpeed;
     this.nextPath = this.spawnerOutputBelt;
-    this.spawnInterval = 1000 / spawnSpeed;
+    this.spawnInterval = Infinity;
+    this.spawnerLevel = 1;
+  }
+
+  setSpawnerLevel(level: number) {
+    this.spawnerLevel = level;
+    const outputToGenerate = getQuantityByLevel(this.itemLevel);
+    const processingSpeed = getQuantityByLevel(this.spawnerLevel);
+    console.log(this.id, "Spawner level", level);
+    console.log(
+      "Output to generate:",
+      outputToGenerate,
+      "processing speed:",
+      processingSpeed,
+    );
+    this.spawnInterval = (1000 * outputToGenerate) / processingSpeed;
   }
 
   render() {
     const graphics = new Graphics();
+    const cornerRadius = 10;
 
-    // 1. Base Plate (The Machine Body)
-    // Centered at 0,0 (the start.x, start.y of the path)
+    const machineColor = 0x2c3e50;
+    const borderColor = 0x1a252f;
+
     graphics
       .roundRect(
         -SPAWNER_SIZE / 2,
         -SPAWNER_SIZE / 2,
         SPAWNER_SIZE,
         SPAWNER_SIZE,
-        8,
+        cornerRadius,
       )
-      .fill(0x444444)
-      .stroke({ width: 4, color: 0x222222 });
-
-    // 2. The Output Port (Indicates which way it faces)
-    // We draw a smaller rectangle on the "forward" side (+X local)
-    graphics
-      .rect(
-        SPAWNER_SIZE / 4,
-        -SPAWNER_SIZE / 4,
-        SPAWNER_SIZE / 4,
-        SPAWNER_SIZE / 2,
-      )
-      .fill(0x666666);
-
-    // 3. Status Light (Glowing green)
-    graphics.circle(0, 0, 6).fill(0x00ff00);
+      .fill(machineColor)
+      .stroke({ width: 4, color: borderColor, alignment: 0 });
 
     this.view.addChild(graphics);
+
+    const textureAlias = `spawner-${this.type}`;
+    const texture = Assets.get(textureAlias);
+
+    if (texture) {
+      const icon = new Sprite(texture);
+
+      icon.anchor.set(0.5);
+
+      icon.width = SPAWNER_SIZE * 0.75;
+      icon.height = SPAWNER_SIZE * 0.75;
+
+      icon.x = 0;
+      icon.y = 0;
+
+      if (this.position === "right") {
+        icon.rotation = Math.PI;
+      }
+
+      this.view.addChild(icon);
+    }
+
+    const indicatorGfx = new Graphics();
+    const indicatorHeight = SPAWNER_SIZE * 0.4;
+    const indicatorWidth = 10;
+    const indicatorColor = 0x00ff00;
+
+    indicatorGfx
+      .roundRect(
+        SPAWNER_SIZE / 2 - indicatorWidth / 2,
+        -indicatorHeight / 2,
+        indicatorWidth,
+        indicatorHeight,
+        5,
+      )
+      .fill(indicatorColor)
+      .stroke({ width: 2, color: 0x004400, alignment: 0 });
+
+    this.view.addChild(indicatorGfx);
   }
 
   generateItem(
-    frameTime: number,
+    frameTimeMS: number,
     nextPathTail: Item | undefined,
   ): Item | undefined {
-    this.spawnTimer += frameTime;
-    const minGap = ITEM_RENDER_SIZE / this.length; // Minimum gap
+    this.spawnTimer += frameTimeMS;
+    const minGap = ITEM_RENDER_SIZE / this.length;
 
-    // Check if we have some space first.
     if (nextPathTail && nextPathTail?.pathProgress <= minGap) {
       return;
     }
 
     if (this.spawnTimer >= this.spawnInterval) {
-      // Create the item at the spawner's start point
-      const newItem = new Item(
-        this.itemType,
-        this, // Set this spawner as the item's current path
-      );
+      const newItem = new Item({
+        type: this.itemType,
+        level: this.itemLevel,
+        currentPath: this,
+      });
 
       this.spawnTimer = 0;
       return newItem;
