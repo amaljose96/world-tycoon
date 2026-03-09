@@ -36,11 +36,13 @@ export class GameBoard {
     const spawnerHeight =
       spawnerRows * FACTORY_SIZE +
       (spawnerRows - 1) * FACTORY_MARGIN +
-      SCREEN_MARGIN * 2;
+      SCREEN_MARGIN;
     const firstSnakeHeight =
       BELT_WIDTH + FACTORY_SIZE * 2.5 + FACTORY_MARGIN * 4;
 
-    this.gameBoardHeight = spawnerHeight + firstSnakeHeight;
+    const outputHeight = FACTORY_SIZE * 2 + FACTORY_MARGIN * 4 + SCREEN_MARGIN;
+
+    this.gameBoardHeight = spawnerHeight + firstSnakeHeight + outputHeight;
     console.log("Calculated game board height: ", this.gameBoardHeight);
   }
 
@@ -156,13 +158,41 @@ export class GameBoard {
         );
         return belt;
       });
-    console.log("Belts to first snake", beltsToFirstSnake);
     beltsToFirstSnake.slice(0, -1).forEach((belt, beltIndex) => {
       const nextBelt = beltsToFirstSnake[beltIndex + 1];
       belt.nextPath = nextBelt;
     });
     masterSpawnerBelt.nextPath = beltsToFirstSnake[0];
     return beltsToFirstSnake;
+  }
+
+  constructOutputBelts(lastBelt: Belt): Belt[] {
+    const outputBelts = [
+      new Belt(
+        "output-belt-0",
+        lastBelt.end,
+        {
+          x: BOARD_WIDTH / 2,
+          y: lastBelt.end.y,
+        },
+        this.gameData.beltSpeed,
+      ),
+      new Belt(
+        "output-belt-1",
+        {
+          x: BOARD_WIDTH / 2,
+          y: lastBelt.end.y,
+        },
+        {
+          x: BOARD_WIDTH / 2,
+          y: lastBelt.end.y - FACTORY_SIZE * 2 - FACTORY_MARGIN * 4,
+        },
+        this.gameData.beltSpeed,
+      ),
+    ];
+    lastBelt.nextPath = outputBelts[0];
+    outputBelts[0].nextPath = outputBelts[1];
+    return outputBelts;
   }
 
   constructBoard() {
@@ -177,40 +207,11 @@ export class GameBoard {
     }
     const beltsToFirstSnake =
       this.constructBeltsToFirstSnake(masterSpawnerBelt);
-    const extraBelts = [
-      new Belt(
-        "extra-belt-1",
-        beltsToFirstSnake[beltsToFirstSnake.length - 1].end,
-        {
-          x: BOARD_WIDTH / 2,
-          y: beltsToFirstSnake[beltsToFirstSnake.length - 1].end.y + BELT_WIDTH,
-        },
-        this.gameData.beltSpeed,
-      ),
-      new Belt(
-        "extra-belt-2",
-        {
-          x: BOARD_WIDTH / 2,
-          y: beltsToFirstSnake[beltsToFirstSnake.length - 1].end.y + BELT_WIDTH,
-        },
-        masterSpawnerBelt.end,
-        this.gameData.beltSpeed,
-      ),
-    ];
-    beltsToFirstSnake[beltsToFirstSnake.length - 1].nextPath = extraBelts[0];
-    extraBelts[0].nextPath = extraBelts[1];
-    extraBelts[1].nextPath = beltsToFirstSnake[0];
-    this.belts = [...spawnerBelts, ...beltsToFirstSnake, ...extraBelts];
-    console.log(
-      "Constructed belts: ",
-      this.belts.map((belt) => ({
-        id: belt.id,
-        startX: belt.start.x,
-        endX: belt.end.x,
-        startY: belt.start.y,
-        endY: belt.end.y,
-      })),
+    const outputBelts = this.constructOutputBelts(
+      beltsToFirstSnake[beltsToFirstSnake.length - 1],
     );
+
+    this.belts = [...spawnerBelts, ...beltsToFirstSnake, ...outputBelts];
   }
 
   update(frameTime: number) {
